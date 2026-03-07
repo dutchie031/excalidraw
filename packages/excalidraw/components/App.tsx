@@ -12413,21 +12413,6 @@ class App extends React.Component<AppProps, AppState> {
 // -----------------------------------------------------------------------------
 // TEST HOOKS
 // -----------------------------------------------------------------------------
-declare global {
-  interface Window {
-    h: {
-      scene: Scene;
-      elements: readonly ExcalidrawElement[];
-      state: AppState;
-      setState: React.Component<any, AppState>["setState"];
-      watchState: (prev: any, next: any) => void | undefined;
-      app: InstanceType<typeof App>;
-      history: History;
-      store: Store;
-    };
-  }
-}
-
 export const createTestHook = () => {
   if (isTestEnv() || isDevEnv()) {
     window.h = window.h || ({} as Window["h"]);

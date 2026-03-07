@@ -8,6 +8,17 @@ interface Window {
   gtag: Function;
   sa_event: Function;
   fathom: { trackEvent: Function };
+  // Test hooks
+  h: {
+    scene: import("@excalidraw/element").Scene;
+    elements: readonly import("@excalidraw/element/types").ExcalidrawElement[];
+    state: import("./types").AppState;
+    setState: import("react").Component<any, import("./types").AppState>["setState"];
+    watchState: (prev: any, next: any) => void | undefined;
+    app: import("./components/App").default;
+    history: import("./history").History;
+    store: import("@excalidraw/element").Store;
+  };
 }
 
 interface CanvasRenderingContext2D {
