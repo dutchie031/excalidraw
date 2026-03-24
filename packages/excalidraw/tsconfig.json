@@ -1,7 +1,7 @@
 {
   "extends": "../tsconfig.base.json",
   "compilerOptions": {
-    "outDir": "./dist/types"
+    "noEmit": true
   },
   "include": ["**/*"],
   "exclude": ["**/*.test.*", "tests", "types", "examples", "dist"]

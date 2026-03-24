@@ -125,6 +125,10 @@ $color-blue-8: #1971c2;
   }
 
   &.active {
+    color: var(
+      --button-selected-color,
+      var(--button-color, var(--color-on-primary-container))
+    );
     background-color: var(
       --button-selected-bg,
       var(--color-surface-primary-container)
@@ -135,6 +139,10 @@ $color-blue-8: #1971c2;
     );
 
     &:hover {
+      color: var(
+        --button-selected-color,
+        var(--button-color, var(--color-on-primary-container))
+      );
       background-color: var(
         --button-selected-hover-bg,
         var(--color-surface-primary-container)
@@ -142,7 +150,7 @@ $color-blue-8: #1971c2;
     }
 
     svg {
-      color: var(--button-color, var(--color-on-primary-container));
+      color: currentColor;
     }
   }
 

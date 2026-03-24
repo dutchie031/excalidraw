@@ -13,6 +13,9 @@ import {
   isTestEnv,
 } from "@excalidraw/common";
 
+import { DEFAULT_ELEMENT_DRAWING_ANIMATION_DURATION_MS } from "./elementAnimation";
+import { DEFAULT_TEXT_REVEAL_SPEED } from "./elementAnimation";
+
 import type { AppState, NormalizedZoomValue } from "./types";
 
 const defaultExportScale = EXPORT_SCALES.includes(devicePixelRatio)
@@ -33,6 +36,10 @@ export const getDefaultAppState = (): Omit<
     currentItemFontFamily: DEFAULT_FONT_FAMILY,
     currentItemFontSize: DEFAULT_FONT_SIZE,
     currentItemOpacity: DEFAULT_ELEMENT_PROPS.opacity,
+    currentItemDrawingAnimationStyle: "automatic",
+    currentItemDrawingAnimationDuration:
+      DEFAULT_ELEMENT_DRAWING_ANIMATION_DURATION_MS,
+    currentItemDrawingAnimationSpeed: DEFAULT_TEXT_REVEAL_SPEED,
     currentItemRoughness: DEFAULT_ELEMENT_PROPS.roughness,
     currentItemStartArrowhead: null,
     currentItemStrokeColor: DEFAULT_ELEMENT_PROPS.strokeColor,
@@ -155,6 +162,21 @@ const APP_STATE_STORAGE_CONF = (<
   currentItemFillStyle: { browser: true, export: false, server: false },
   currentItemFontFamily: { browser: true, export: false, server: false },
   currentItemFontSize: { browser: true, export: false, server: false },
+  currentItemDrawingAnimationStyle: {
+    browser: true,
+    export: false,
+    server: false,
+  },
+  currentItemDrawingAnimationDuration: {
+    browser: true,
+    export: false,
+    server: false,
+  },
+  currentItemDrawingAnimationSpeed: {
+    browser: true,
+    export: false,
+    server: false,
+  },
   currentItemRoundness: {
     browser: true,
     export: false,

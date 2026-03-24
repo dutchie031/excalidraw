@@ -190,6 +190,27 @@ body.excalidraw-cursor-resize * {
         font-size: 0.75rem;
       }
 
+      label.drawing-animation-option-control,
+      button.drawing-animation-option-control {
+        align-items: center;
+        justify-content: center;
+      }
+
+      .drawing-animation-option {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        line-height: 0;
+      }
+
+      .drawing-animation-option__glyph {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        color: currentColor;
+        flex-shrink: 0;
+      }
+
       input[type="radio"],
       input[type="button"] {
         opacity: 0;

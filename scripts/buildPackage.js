@@ -102,7 +102,7 @@ function buildProd(config) {
 
 const createESMRawBuild = async () => {
   const chunksConfig = {
-    entryPoints: ["index.tsx", "**/*.chunk.ts"],
+    entryPoints: ["index.tsx", "frame-animation.tsx", "**/*.chunk.ts"],
     entryNames: "[name]",
   };
 

@@ -7,6 +7,8 @@ import { HelpButton } from "../HelpButton";
 import { Section } from "../Section";
 import Stack from "../Stack";
 
+import { FramesNavigator } from "./FramesNavigator";
+
 import type { ActionManager } from "../../actions/manager";
 import type { UIAppState } from "../../types";
 
@@ -51,6 +53,7 @@ const Footer = ({
               />
             )}
           </Section>
+          {!appState.viewModeEnabled && <FramesNavigator />}
         </Stack.Col>
       </div>
       <FooterCenterTunnel.Out />

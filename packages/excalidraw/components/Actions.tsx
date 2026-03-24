@@ -46,6 +46,7 @@ import {
 } from "../scene";
 
 import { getFormValue } from "../actions/actionProperties";
+import { supportsElementDrawingAnimation } from "../elementAnimation";
 
 import { useTextEditorFocus } from "../hooks/useTextEditorFocus";
 
@@ -131,6 +132,16 @@ export const canChangeBackgroundColor = (
   return (
     hasBackground(appState.activeTool.type) ||
     targetElements.some((element) => hasBackground(element.type))
+  );
+};
+
+const canChangeDrawingAnimation = (
+  appState: UIAppState,
+  targetElements: ExcalidrawElement[],
+) => {
+  return (
+    supportsElementDrawingAnimation(appState.activeTool.type) ||
+    targetElements.some((element) => supportsElementDrawingAnimation(element))
   );
 };
 
@@ -242,6 +253,9 @@ export const SelectedShapeActions = ({
       )}
 
       {renderAction("changeOpacity")}
+
+      {canChangeDrawingAnimation(appState, targetElements) &&
+        renderAction("changeDrawingAnimation")}
 
       <fieldset>
         <legend>{t("labels.layers")}</legend>
@@ -409,6 +423,8 @@ const CombinedShapeProperties = ({
                 )) &&
                 renderAction("changeRoundness")}
               {renderAction("changeOpacity")}
+              {canChangeDrawingAnimation(appState, targetElements) &&
+                renderAction("changeDrawingAnimation")}
             </div>
           </PropertiesPopover>
         )}

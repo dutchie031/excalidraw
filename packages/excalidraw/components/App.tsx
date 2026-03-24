@@ -216,6 +216,7 @@ import {
   isSelectedViaGroup,
   selectGroupsForSelectedElements,
   syncInvalidIndices,
+  syncInvalidIndicesImmutable,
   syncMovedIndices,
   excludeElementsInFramesFromSelection,
   getSelectionStateForElements,
@@ -264,6 +265,7 @@ import type {
   ExcalidrawElement,
   ExcalidrawFreeDrawElement,
   ExcalidrawGenericElement,
+  ExcalidrawFrameElement,
   ExcalidrawLinearElement,
   ExcalidrawTextElement,
   NonDeleted,
@@ -284,6 +286,7 @@ import type {
   ExcalidrawElbowArrowElement,
   SceneElementsMap,
   ExcalidrawBindableElement,
+  FontFamilyValues,
 } from "@excalidraw/element/types";
 
 import type { Mutable, ValueOf } from "@excalidraw/common/utility-types";
@@ -367,6 +370,12 @@ import {
   hasBackground,
   isSomeElementSelected,
 } from "../scene";
+import {
+  applyCanonicalFrameNames,
+  isMasterNormalFrameId,
+  shouldApplyCanonicalFrameNames,
+  syncNormalFramesToMasterSize,
+} from "../frameNavigator";
 import { getStateForZoom } from "../scene/zoom";
 import {
   dataURLToString,
@@ -451,6 +460,11 @@ import { MagicIcon, copyIcon, fullscreenIcon } from "./icons";
 import { Toast } from "./Toast";
 
 import { findShapeByKey } from "./shapes";
+
+import {
+  buildAnimationCustomData,
+  buildElementDrawingAnimation,
+} from "../elementAnimation";
 
 import UnlockPopup from "./UnlockPopup";
 
@@ -593,6 +607,8 @@ const gesture: Gesture = {
 };
 
 class App extends React.Component<AppProps, AppState> {
+  private suppressedSceneChangeEffectsCount = 0;
+
   canvas: AppClassProperties["canvas"];
   interactiveCanvas: AppClassProperties["interactiveCanvas"] = null;
   public sessionExportThemeOverride: AppState["theme"] | undefined;
@@ -3380,6 +3396,25 @@ class App extends React.Component<AppProps, AppState> {
       this.setState({ editingTextElement: null });
     }
 
+    if (this.suppressedSceneChangeEffectsCount > 0) {
+      this.suppressedSceneChangeEffectsCount -= 1;
+      return;
+    }
+
+    if (!this.state.isLoading && shouldApplyCanonicalFrameNames(this.state)) {
+      const canonicalScene = applyCanonicalFrameNames(
+        this.scene.getElementsIncludingDeleted(),
+      );
+
+      if (canonicalScene.didChange) {
+        this.updateScene({
+          elements: canonicalScene.elements,
+          captureUpdate: CaptureUpdateAction.IMMEDIATELY,
+        });
+        return;
+      }
+    }
+
     this.store.commit(elementsMap, this.state);
 
     // Do not notify consumers if we're still loading the scene. Among other
@@ -3972,6 +4007,10 @@ class App extends React.Component<AppProps, AppState> {
       text,
       fontSize: this.state.currentItemFontSize,
       fontFamily: this.state.currentItemFontFamily,
+      customData: this.getCurrentItemDrawingAnimationCustomData(
+        "text",
+        this.state.currentItemFontFamily,
+      ),
       textAlign: DEFAULT_TEXT_ALIGN,
       verticalAlign: DEFAULT_VERTICAL_ALIGN,
       locked: false,
@@ -4424,9 +4463,11 @@ class App extends React.Component<AppProps, AppState> {
       captureUpdate?: SceneData["captureUpdate"];
     }) => {
       const { elements, appState, collaborators, captureUpdate } = sceneData;
+      const nextElements = elements
+        ? Array.from(syncInvalidIndicesImmutable(elements)!.values())
+        : undefined;
 
       if (captureUpdate) {
-        const nextElements = elements ? elements : undefined;
         const observedAppState = appState
           ? getObservedAppState({
               ...this.store.snapshot.appState,
@@ -4445,8 +4486,8 @@ class App extends React.Component<AppProps, AppState> {
         this.setState(appState as Pick<AppState, K> | null);
       }
 
-      if (elements) {
-        this.scene.replaceAllElements(elements);
+      if (nextElements) {
+        this.scene.replaceAllElements(nextElements, { skipValidation: true });
       }
 
       if (collaborators) {
@@ -4496,6 +4537,10 @@ class App extends React.Component<AppProps, AppState> {
     } else {
       this.setState({});
     }
+  };
+
+  public suppressNextSceneChangeEffects = (count: number = 1) => {
+    this.suppressedSceneChangeEffectsCount += count;
   };
 
   /**
@@ -6000,6 +6045,10 @@ class App extends React.Component<AppProps, AppState> {
         text: "",
         fontSize,
         fontFamily,
+        customData: this.getCurrentItemDrawingAnimationCustomData(
+          "text",
+          fontFamily,
+        ),
         textAlign: parentCenterPosition
           ? "center"
           : this.state.currentItemTextAlign,
@@ -8485,6 +8534,7 @@ class App extends React.Component<AppProps, AppState> {
       simulatePressure,
       locked: false,
       frameId: topLayerFrame ? topLayerFrame.id : null,
+      customData: this.getCurrentItemDrawingAnimationCustomData(elementType),
       points: [pointFrom<LocalPoint>(0, 0)],
       pressures: simulatePressure ? [] : [event.pressure],
     });
@@ -8812,6 +8862,9 @@ class App extends React.Component<AppProps, AppState> {
               endArrowhead,
               locked: false,
               frameId: topLayerFrame ? topLayerFrame.id : null,
+              customData: this.getCurrentItemDrawingAnimationCustomData(
+                elementType,
+              ),
               elbowed: this.state.currentItemArrowType === ARROW_TYPE.elbow,
               fixedSegments:
                 this.state.currentItemArrowType === ARROW_TYPE.elbow
@@ -8835,6 +8888,9 @@ class App extends React.Component<AppProps, AppState> {
                   : null,
               locked: false,
               frameId: topLayerFrame ? topLayerFrame.id : null,
+              customData: this.getCurrentItemDrawingAnimationCustomData(
+                elementType,
+              ),
             });
 
       const point = pointFrom<GlobalPoint>(
@@ -8962,6 +9018,22 @@ class App extends React.Component<AppProps, AppState> {
       : null;
   }
 
+  private getCurrentItemDrawingAnimationCustomData(
+    elementType: string,
+    fontFamily?: FontFamilyValues,
+  ) {
+    return buildAnimationCustomData({
+      appearance:
+        buildElementDrawingAnimation({
+          choice: this.state.currentItemDrawingAnimationStyle,
+          durationMs: this.state.currentItemDrawingAnimationDuration,
+          elementType,
+          fontFamily,
+          speed: this.state.currentItemDrawingAnimationSpeed,
+        }) || undefined,
+    });
+  }
+
   private createGenericElementOnPointerDown = (
     elementType: ExcalidrawGenericElement["type"] | "embeddable",
     pointerDownState: PointerDownState,
@@ -8992,6 +9064,7 @@ class App extends React.Component<AppProps, AppState> {
       roundness: this.getCurrentItemRoundness(elementType),
       locked: false,
       frameId: topLayerFrame ? topLayerFrame.id : null,
+      customData: this.getCurrentItemDrawingAnimationCustomData(elementType),
     } as const;
 
     let element;
@@ -10643,6 +10716,31 @@ class App extends React.Component<AppProps, AppState> {
           );
         }
 
+        const selectedMasterFrame =
+          selectedFrames.length === 1 && selectedFrames[0].type === "frame"
+            ? selectedFrames[0]
+            : null;
+
+        if (selectedMasterFrame) {
+          const originalMasterFrame = pointerDownState.originalElements.get(
+            selectedMasterFrame.id,
+          );
+
+          if (originalMasterFrame) {
+            nextElements = syncNormalFramesToMasterSize<
+              (typeof nextElements)[number]
+            >({
+              elements: nextElements,
+              masterFrameId: selectedMasterFrame.id,
+              referenceElements: nextElements.map((element) => {
+                return element.id === originalMasterFrame.id
+                  ? originalMasterFrame
+                  : element;
+              }),
+            });
+          }
+        }
+
         this.scene.replaceAllElements(nextElements);
       }
 
@@ -11969,6 +12067,9 @@ class App extends React.Component<AppProps, AppState> {
       (element): element is ExcalidrawFrameLikeElement =>
         isFrameLikeElement(element),
     );
+    const selectedNormalFrames = selectedFrames.filter(
+      (element): element is ExcalidrawFrameElement => element.type === "frame",
+    );
 
     const transformHandleType = pointerDownState.resize.handleType;
 
@@ -11980,6 +12081,21 @@ class App extends React.Component<AppProps, AppState> {
       // Do not resize when in crop mode
       this.state.croppingElementId
     ) {
+      return false;
+    }
+
+    if (
+      selectedNormalFrames.length > 0 &&
+      (selectedElements.length !== 1 ||
+        selectedNormalFrames.length !== 1 ||
+        !isMasterNormalFrameId(
+          this.scene.getElementsIncludingDeleted(),
+          selectedNormalFrames[0].id,
+        ))
+    ) {
+      this.setToast({
+        message: t("frameNavigator.masterResizeOnly"),
+      });
       return false;
     }
 

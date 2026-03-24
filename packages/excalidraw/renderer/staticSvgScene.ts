@@ -15,6 +15,7 @@ import { normalizeLink, toValidURL } from "@excalidraw/common";
 import { hashString } from "@excalidraw/element";
 import { getUncroppedWidthAndHeight } from "@excalidraw/element";
 import {
+  appendHandwrittenTextOutlineToSvg,
   createPlaceholderEmbeddableLabel,
   getEmbedLink,
 } from "@excalidraw/element";
@@ -645,6 +646,26 @@ const renderElementToSvg = (
             offsetY || 0
           }) rotate(${degree} ${cx} ${cy})`,
         );
+
+        if (
+          appendHandwrittenTextOutlineToSvg({
+            element,
+            node,
+            theme: renderConfig.theme,
+          })
+        ) {
+          const g = maybeWrapNodesInFrameClipPath(
+            element,
+            root,
+            [node],
+            renderConfig.frameRendering,
+            elementsMap,
+          );
+
+          addToRoot(g || node, element);
+          break;
+        }
+
         const lines = element.text.replace(/\r\n?/g, "\n").split("\n");
         const lineHeightPx = getLineHeightInPx(
           element.fontSize,

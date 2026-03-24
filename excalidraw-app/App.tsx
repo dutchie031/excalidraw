@@ -32,8 +32,12 @@ import {
   isDevEnv,
 } from "@excalidraw/common";
 import polyfill from "@excalidraw/excalidraw/polyfill";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { loadFromBlob } from "@excalidraw/excalidraw/data/blob";
+import {
+  applyFrameDuplicateLinks,
+  createFrameAnimationModes,
+} from "@excalidraw/excalidraw/frame-animation";
 import { useCallbackRefState } from "@excalidraw/excalidraw/hooks/useCallbackRefState";
 import { t } from "@excalidraw/excalidraw/i18n";
 
@@ -149,7 +153,11 @@ import type { CollabAPI } from "./collab/Collab";
 
 polyfill();
 
-window.EXCALIDRAW_THROTTLE_RENDER = true;
+(
+  window as unknown as Window & {
+    EXCALIDRAW_THROTTLE_RENDER: boolean | undefined;
+  }
+).EXCALIDRAW_THROTTLE_RENDER = true;
 
 declare global {
   interface BeforeInstallPromptEventChoiceResult {
@@ -167,6 +175,14 @@ declare global {
 }
 
 let pwaEvent: BeforeInstallPromptEvent | null = null;
+
+type AppEnv = {
+  VITE_APP_DISABLE_PREVENT_UNLOAD?: string;
+  VITE_APP_PLUS_APP: string;
+  VITE_APP_PLUS_LP: string;
+};
+
+const appEnv = (import.meta as ImportMeta & { readonly env: AppEnv }).env;
 
 // Adding a listener outside of the component as it may (?) need to be
 // subscribed early to catch the event.
@@ -401,6 +417,14 @@ const ExcalidrawWrapper = () => {
 
   const [excalidrawAPI, excalidrawRefCallback] =
     useCallbackRefState<ExcalidrawImperativeAPI>();
+  const suppressedSceneChangeCountRef = useRef(0);
+  const frameAnimationModes = useMemo(() => {
+    return createFrameAnimationModes({
+      suppressSceneChange: () => {
+        suppressedSceneChangeCountRef.current += 1;
+      },
+    });
+  }, []);
 
   const [, setShareDialogState] = useAtom(shareDialogStateAtom);
   const [collabAPI] = useAtom(collabAPIAtom);
@@ -640,7 +664,7 @@ const ExcalidrawWrapper = () => {
           excalidrawAPI.getSceneElements(),
         )
       ) {
-        if (import.meta.env.VITE_APP_DISABLE_PREVENT_UNLOAD !== "true") {
+        if (appEnv.VITE_APP_DISABLE_PREVENT_UNLOAD !== "true") {
           preventUnload(event);
         } else {
           console.warn(
@@ -660,6 +684,11 @@ const ExcalidrawWrapper = () => {
     appState: AppState,
     files: BinaryFiles,
   ) => {
+    if (suppressedSceneChangeCountRef.current > 0) {
+      suppressedSceneChangeCountRef.current -= 1;
+      return;
+    }
+
     if (collabAPI?.isCollaborating()) {
       collabAPI.syncElements(elements);
     }
@@ -800,9 +829,7 @@ const ExcalidrawWrapper = () => {
     keywords: ["plus", "cloud", "server"],
     perform: () => {
       window.open(
-        `${
-          import.meta.env.VITE_APP_PLUS_LP
-        }/plus?utm_source=excalidraw&utm_medium=app&utm_content=command_palette`,
+        `${appEnv.VITE_APP_PLUS_LP}/plus?utm_source=excalidraw&utm_medium=app&utm_content=command_palette`,
         "_blank",
       );
     },
@@ -823,9 +850,7 @@ const ExcalidrawWrapper = () => {
     ],
     perform: () => {
       window.open(
-        `${
-          import.meta.env.VITE_APP_PLUS_APP
-        }?utm_source=excalidraw&utm_medium=app&utm_content=command_palette`,
+        `${appEnv.VITE_APP_PLUS_APP}?utm_source=excalidraw&utm_medium=app&utm_content=command_palette`,
         "_blank",
       );
     },
@@ -882,6 +907,8 @@ const ExcalidrawWrapper = () => {
         handleKeyboardGlobally={true}
         autoFocus={true}
         theme={editorTheme}
+        onFrameDuplicate={applyFrameDuplicateLinks}
+        frameNavigatorModes={frameAnimationModes}
         renderTopRightUI={(isMobile) => {
           if (isMobile || !collabAPI || isCollabDisabled) {
             return null;

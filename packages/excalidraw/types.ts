@@ -17,6 +17,7 @@ import type {
   NonDeleted,
   TextAlign,
   ExcalidrawElement,
+  ExcalidrawFrameElement,
   GroupId,
   ExcalidrawBindableElement,
   Arrowhead,
@@ -356,6 +357,9 @@ export interface AppState {
   currentItemStrokeStyle: ExcalidrawElement["strokeStyle"];
   currentItemRoughness: number;
   currentItemOpacity: number;
+  currentItemDrawingAnimationStyle: import("./elementAnimation").ElementDrawingAnimationChoice;
+  currentItemDrawingAnimationDuration: number;
+  currentItemDrawingAnimationSpeed: import("./elementAnimation").TextRevealSpeed;
   currentItemFontFamily: FontFamilyValues;
   currentItemFontSize: number;
   currentItemTextAlign: TextAlign;
@@ -546,6 +550,48 @@ export type OnUserFollowedPayload = {
   action: "FOLLOW" | "UNFOLLOW";
 };
 
+export type FramesNavigatorModeRenderContext = {
+  activeModeId: string;
+  appState: UIAppState;
+  closeWindow: () => void;
+  commitSceneElements: (
+    nextElements: readonly ExcalidrawElement[],
+    captureUpdate?: CaptureUpdateActionType,
+  ) => void;
+  elements: readonly ExcalidrawElement[];
+  notify: (message: string) => void;
+  orderedFrameIds: readonly ExcalidrawElement["id"][];
+  orderedFrames: readonly ExcalidrawFrameElement[];
+  selectAndFocusElementIds: (
+    elementIds: readonly ExcalidrawElement["id"][],
+    options?: {
+      fitToViewport?: boolean;
+    },
+  ) => void;
+  selectAndFocusFrame: (frame: ExcalidrawFrameElement) => void;
+  setActiveMode: (modeId: string) => void;
+};
+
+export type FramesNavigatorModeDefinition = {
+  id: string;
+  label: string;
+  render: (context: FramesNavigatorModeRenderContext) => JSX.Element | null;
+  renderWindowAction?: (
+    context: FramesNavigatorModeRenderContext,
+  ) => JSX.Element | null;
+};
+
+export type FrameDuplicatePayload = {
+  duplicatedFrame: ExcalidrawFrameElement;
+  nextElements: readonly ExcalidrawElement[];
+  origIdToDuplicateId: ReadonlyMap<
+    ExcalidrawElement["id"],
+    ExcalidrawElement["id"]
+  >;
+  prevElements: readonly ExcalidrawElement[];
+  sourceFrame: ExcalidrawFrameElement;
+};
+
 export interface ExcalidrawProps {
   onChange?: (
     elements: readonly OrderedExcalidrawElement[],
@@ -582,6 +628,14 @@ export interface ExcalidrawProps {
     nextElements: readonly ExcalidrawElement[],
     /** excludes the duplicated elements */
     prevElements: readonly ExcalidrawElement[],
+  ) => ExcalidrawElement[] | void;
+  /**
+   * Called when duplicating a frame from the Frames navigator.
+   *
+   * Returned elements will be used in place of the next scene elements.
+   */
+  onFrameDuplicate?: (
+    payload: FrameDuplicatePayload,
   ) => ExcalidrawElement[] | void;
   renderTopLeftUI?: (
     isMobile: boolean,
@@ -627,6 +681,7 @@ export interface ExcalidrawProps {
   ) => void;
   onScrollChange?: (scrollX: number, scrollY: number, zoom: Zoom) => void;
   onUserFollow?: (payload: OnUserFollowedPayload) => void;
+  frameNavigatorModes?: readonly FramesNavigatorModeDefinition[];
   children?: React.ReactNode;
   validateEmbeddable?:
     | boolean
@@ -767,6 +822,7 @@ export type AppClassProperties = {
 
   lastPointerMoveCoords: App["lastPointerMoveCoords"];
   bindModeHandler: App["bindModeHandler"];
+  suppressNextSceneChangeEffects: App["suppressNextSceneChangeEffects"];
 };
 
 export type PointerDownState = Readonly<{
