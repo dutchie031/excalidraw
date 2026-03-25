@@ -228,9 +228,9 @@ const HANDWRITTEN_TEXT_REVEAL_MS_PER_CHARACTER: Record<
   TextRevealSpeed,
   number
 > = {
-  fast: 45,
-  normal: 70,
-  slow: 100,
+  fast: 50,
+  normal: 100,
+  slow: 300,
 };
 const HANDWRITTEN_TEXT_REVEAL_SPACE_WEIGHT = 1.6;
 const HANDWRITTEN_TEXT_REVEAL_PUNCTUATION_WEIGHT = 2.2;
