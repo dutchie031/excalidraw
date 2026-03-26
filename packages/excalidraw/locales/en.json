@@ -213,6 +213,14 @@
     "frames": "Frames",
     "texts": "Texts"
   },
+  "frameNavigator": {
+    "title": "Frames",
+    "empty": "No frames yet",
+    "newFrame": "New Frame",
+    "aspectRatios": "Aspect ratios",
+    "masterResizeOnly": "Resize Frame_1 to change all frames.",
+    "resize": "Resize frames window"
+  },
   "buttons": {
     "clearReset": "Reset the canvas",
     "exportJSON": "Export to file",

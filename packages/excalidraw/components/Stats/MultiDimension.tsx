@@ -462,7 +462,7 @@ const MultiDimension = ({
   const value =
     new Set(sizes).size === 1 ? Math.round(sizes[0] * 100) / 100 : "Mixed";
 
-  const editable = sizes.length > 0;
+  const editable = sizes.length > 0 && !elements.some((element) => element.type === "frame");
 
   return (
     <DragInput

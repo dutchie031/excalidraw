@@ -64,16 +64,20 @@ import {
   isImageElement,
 } from "./typeChecks";
 import { getContainingFrame } from "./frame";
+import { drawHandwrittenTextOutlineToCanvas } from "./handwrittenTextOutline";
 import { getCornerRadius } from "./utils";
 
 import { ShapeCache } from "./shape";
 
 import type {
   ExcalidrawElement,
+  ExcalidrawDiamondElement,
+  ExcalidrawEllipseElement,
   ExcalidrawTextElement,
   NonDeletedExcalidrawElement,
   ExcalidrawFreeDrawElement,
   ExcalidrawImageElement,
+  ExcalidrawRectangleElement,
   ExcalidrawTextElementWithContainer,
   ExcalidrawFrameLikeElement,
   NonDeletedSceneElementsMap,
@@ -103,6 +107,345 @@ const getCanvasPadding = (element: ExcalidrawElement) => {
     default:
       return 20;
   }
+};
+
+// Keep this literal in sync with the frame-animation-side primitive reveal preview key.
+const PRIMITIVE_REVEAL_PREVIEW_CUSTOM_DATA_KEY =
+  "excalidrawSyncPrimitiveRevealPreview";
+
+type PrimitiveRevealPreviewSourceType = "rectangle" | "diamond" | "ellipse";
+type PrimitiveRevealPreviewSourceElement =
+  | ExcalidrawRectangleElement
+  | ExcalidrawDiamondElement
+  | ExcalidrawEllipseElement;
+
+type PrimitiveRevealPreviewData = {
+  progress: number;
+  roughness: number;
+  roundness: ExcalidrawElement["roundness"];
+  sourceType: PrimitiveRevealPreviewSourceType;
+};
+
+const clampUnitProgress = (value: number) => {
+  return Math.max(0, Math.min(1, value));
+};
+
+const getPrimitiveRevealPreviewData = (
+  element: ExcalidrawElement,
+): PrimitiveRevealPreviewData | null => {
+  const candidate = element.customData?.[PRIMITIVE_REVEAL_PREVIEW_CUSTOM_DATA_KEY];
+
+  if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+    return null;
+  }
+
+  const sourceType =
+    "sourceType" in candidate ? (candidate.sourceType as string) : null;
+  const progress =
+    "progress" in candidate && typeof candidate.progress === "number"
+      ? candidate.progress
+      : NaN;
+
+  if (
+    !Number.isFinite(progress) ||
+    (sourceType !== "rectangle" &&
+      sourceType !== "diamond" &&
+      sourceType !== "ellipse")
+  ) {
+    return null;
+  }
+
+  return {
+    progress: clampUnitProgress(progress),
+    roughness:
+      "roughness" in candidate && typeof candidate.roughness === "number"
+        ? candidate.roughness
+        : 0,
+    roundness:
+      "roundness" in candidate
+        ? (candidate.roundness as ExcalidrawElement["roundness"])
+        : null,
+    sourceType,
+  };
+};
+
+const getPrimitiveRevealSourceElement = (
+  element: ExcalidrawElement,
+  preview: PrimitiveRevealPreviewData,
+) => {
+  return {
+    ...element,
+    roughness: preview.roughness,
+    roundness: preview.roundness,
+    type: preview.sourceType,
+  } as PrimitiveRevealPreviewSourceElement;
+};
+
+const getPrimitiveRevealLayoutElement = (
+  element: ExcalidrawElement,
+): PrimitiveRevealPreviewSourceElement | null => {
+  if (!isLinearElement(element)) {
+    return null;
+  }
+
+  const preview = getPrimitiveRevealPreviewData(element);
+
+  return preview ? getPrimitiveRevealSourceElement(element, preview) : null;
+};
+
+const createPrimitiveRevealLayer = (context: CanvasRenderingContext2D) => {
+  const canvas = document.createElement("canvas");
+  canvas.width = context.canvas.width;
+  canvas.height = context.canvas.height;
+
+  const layerContext = canvas.getContext("2d")!;
+  layerContext.setTransform(context.getTransform());
+
+  return {
+    canvas,
+    context: layerContext,
+  };
+};
+
+const compositePrimitiveRevealLayer = (
+  context: CanvasRenderingContext2D,
+  layerCanvas: HTMLCanvasElement,
+) => {
+  context.save();
+  context.setTransform(1, 0, 0, 1, 0, 0);
+  context.drawImage(layerCanvas, 0, 0);
+  context.restore();
+};
+
+const applyPrimitiveRevealMask = (
+  sourceContext: CanvasRenderingContext2D,
+  maskCanvas: HTMLCanvasElement,
+) => {
+  sourceContext.save();
+  sourceContext.setTransform(1, 0, 0, 1, 0, 0);
+  sourceContext.globalCompositeOperation = "destination-in";
+  sourceContext.drawImage(maskCanvas, 0, 0);
+  sourceContext.restore();
+};
+
+const drawPrimitiveRevealPath = (
+  context: CanvasRenderingContext2D,
+  points: readonly (readonly [number, number])[],
+) => {
+  if (!points.length) {
+    return;
+  }
+
+  context.beginPath();
+  context.moveTo(points[0][0], points[0][1]);
+
+  for (let index = 1; index < points.length; index += 1) {
+    context.lineTo(points[index][0], points[index][1]);
+  }
+};
+
+const getPrimitiveRevealEllipseEndAngle = (progress: number) => {
+  return -Math.PI / 2 + Math.PI * 2 * clampUnitProgress(progress);
+};
+
+const drawPrimitiveRevealEllipseStrokeMask = ({
+  context,
+  element,
+  progress,
+}: {
+  context: CanvasRenderingContext2D;
+  element: ExcalidrawEllipseElement;
+  progress: number;
+}) => {
+  if (progress <= 0) {
+    return;
+  }
+
+  context.beginPath();
+  context.ellipse(
+    element.width / 2,
+    element.height / 2,
+    element.width / 2,
+    element.height / 2,
+    0,
+    -Math.PI / 2,
+    getPrimitiveRevealEllipseEndAngle(progress),
+  );
+};
+
+const drawPrimitiveRevealEllipseFillMask = ({
+  context,
+  element,
+  progress,
+}: {
+  context: CanvasRenderingContext2D;
+  element: ExcalidrawEllipseElement;
+  progress: number;
+}) => {
+  if (progress <= 0) {
+    return;
+  }
+
+  context.beginPath();
+  context.moveTo(element.width / 2, element.height / 2);
+  context.ellipse(
+    element.width / 2,
+    element.height / 2,
+    element.width / 2,
+    element.height / 2,
+    0,
+    -Math.PI / 2,
+    getPrimitiveRevealEllipseEndAngle(progress),
+  );
+  context.closePath();
+};
+
+const getPrimitiveRevealStrokeMaskWidth = (
+  element: PrimitiveRevealPreviewSourceElement,
+) => {
+  return Math.max(element.strokeWidth * 4, element.strokeWidth + 18);
+};
+
+const drawPrimitiveRevealStrokeMask = ({
+  context,
+  element,
+  points,
+  progress,
+}: {
+  context: CanvasRenderingContext2D;
+  element: PrimitiveRevealPreviewSourceElement;
+  points: readonly (readonly [number, number])[];
+  progress: number;
+}) => {
+  if ((element.type === "ellipse" && progress <= 0) || !points.length) {
+    return;
+  }
+
+  if (element.type === "ellipse") {
+    drawPrimitiveRevealEllipseStrokeMask({
+      context,
+      element,
+      progress,
+    });
+  } else {
+    drawPrimitiveRevealPath(context, points);
+  }
+  context.lineCap = "round";
+  context.lineJoin = "round";
+  context.lineWidth = getPrimitiveRevealStrokeMaskWidth(element);
+  context.strokeStyle = "#fff";
+  context.stroke();
+};
+
+const drawPrimitiveRevealFillMask = ({
+  context,
+  element,
+  points,
+  progress,
+}: {
+  context: CanvasRenderingContext2D;
+  element: PrimitiveRevealPreviewSourceElement;
+  points: readonly (readonly [number, number])[];
+  progress: number;
+}) => {
+  if ((element.type === "ellipse" && progress <= 0) || !points.length) {
+    return;
+  }
+
+  if (element.type === "ellipse") {
+    drawPrimitiveRevealEllipseFillMask({
+      context,
+      element,
+      progress,
+    });
+  } else {
+    const centerX = element.width / 2;
+    const centerY = element.height / 2;
+
+    context.beginPath();
+    context.moveTo(centerX, centerY);
+    context.lineTo(points[0][0], points[0][1]);
+
+    for (let index = 1; index < points.length; index += 1) {
+      context.lineTo(points[index][0], points[index][1]);
+    }
+
+    context.closePath();
+  }
+  context.fillStyle = "#fff";
+  context.fill();
+};
+
+const renderPrimitiveRevealPreview = (
+  context: CanvasRenderingContext2D,
+  element: ExcalidrawElement,
+  renderConfig: StaticCanvasRenderConfig,
+  preview: PrimitiveRevealPreviewData,
+) => {
+  if (!isLinearElement(element)) {
+    return;
+  }
+
+  const sourceElement = getPrimitiveRevealSourceElement(element, preview);
+  const revealPoints = element.points.map(
+    (point) => [point[0], point[1]] as [number, number],
+  );
+
+  if (!revealPoints.length) {
+    return;
+  }
+
+  if (preview.progress >= 0.999) {
+    const previewCanvas = rough.canvas(context.canvas);
+    previewCanvas.draw(ShapeCache.generateElementShape(sourceElement, renderConfig));
+    return;
+  }
+
+  const strokeLayer = createPrimitiveRevealLayer(context);
+  const strokeCanvas = rough.canvas(strokeLayer.canvas);
+  strokeCanvas.draw(
+    ShapeCache.generateElementShape(
+      {
+        ...sourceElement,
+        backgroundColor: "transparent",
+      } as PrimitiveRevealPreviewSourceElement,
+      renderConfig,
+    ),
+  );
+  const strokeMaskLayer = createPrimitiveRevealLayer(context);
+  drawPrimitiveRevealStrokeMask({
+    context: strokeMaskLayer.context,
+    element: sourceElement,
+    points: revealPoints,
+    progress: preview.progress,
+  });
+  applyPrimitiveRevealMask(strokeLayer.context, strokeMaskLayer.canvas);
+  compositePrimitiveRevealLayer(context, strokeLayer.canvas);
+
+  if (sourceElement.backgroundColor === "transparent") {
+    return;
+  }
+
+  const fillLayer = createPrimitiveRevealLayer(context);
+  const fillCanvas = rough.canvas(fillLayer.canvas);
+  fillCanvas.draw(
+    ShapeCache.generateElementShape(
+      {
+        ...sourceElement,
+        strokeColor: "transparent",
+      } as PrimitiveRevealPreviewSourceElement,
+      renderConfig,
+    ),
+  );
+  const fillMaskLayer = createPrimitiveRevealLayer(context);
+  drawPrimitiveRevealFillMask({
+    context: fillMaskLayer.context,
+    element: sourceElement,
+    points: revealPoints,
+    progress: preview.progress,
+  });
+  applyPrimitiveRevealMask(fillLayer.context, fillMaskLayer.canvas);
+  compositePrimitiveRevealLayer(context, fillLayer.canvas);
 };
 
 export const getRenderOpacity = (
@@ -155,6 +498,8 @@ const cappedElementCanvasSize = (
   height: number;
   scale: number;
 } => {
+  const layoutElement = getPrimitiveRevealLayoutElement(element) || element;
+
   // these limits are ballpark, they depend on specific browsers and device.
   // We've chosen lower limits to be safe. We might want to change these limits
   // based on browser/device type, if we get reports of low quality rendering
@@ -165,17 +510,20 @@ const cappedElementCanvasSize = (
   // ~ safari width/height limit based on developer.mozilla.org.
   const WIDTH_HEIGHT_LIMIT = 32767;
 
-  const padding = getCanvasPadding(element);
+  const padding = getCanvasPadding(layoutElement);
 
-  const [x1, y1, x2, y2] = getElementAbsoluteCoords(element, elementsMap);
+  const [x1, y1, x2, y2] = getElementAbsoluteCoords(
+    layoutElement,
+    elementsMap,
+  );
   const elementWidth =
-    isLinearElement(element) || isFreeDrawElement(element)
+    isLinearElement(layoutElement) || isFreeDrawElement(layoutElement)
       ? distance(x1, x2)
-      : element.width;
+      : layoutElement.width;
   const elementHeight =
-    isLinearElement(element) || isFreeDrawElement(element)
+    isLinearElement(layoutElement) || isFreeDrawElement(layoutElement)
       ? distance(y1, y2)
-      : element.height;
+      : layoutElement.height;
 
   let width = elementWidth * window.devicePixelRatio + padding * 2;
   let height = elementHeight * window.devicePixelRatio + padding * 2;
@@ -210,10 +558,11 @@ const generateElementCanvas = (
 ): ExcalidrawElementWithCanvas | null => {
   const canvas = document.createElement("canvas");
   const context = canvas.getContext("2d")!;
-  const padding = getCanvasPadding(element);
+  const layoutElement = getPrimitiveRevealLayoutElement(element) || element;
+  const padding = getCanvasPadding(layoutElement);
 
   const { width, height, scale } = cappedElementCanvasSize(
-    element,
+    layoutElement,
     elementsMap,
     zoom,
   );
@@ -228,17 +577,17 @@ const generateElementCanvas = (
   let canvasOffsetX = -100;
   let canvasOffsetY = 0;
 
-  if (isLinearElement(element) || isFreeDrawElement(element)) {
-    const [x1, y1] = getElementAbsoluteCoords(element, elementsMap);
+  if (isLinearElement(layoutElement) || isFreeDrawElement(layoutElement)) {
+    const [x1, y1] = getElementAbsoluteCoords(layoutElement, elementsMap);
 
     canvasOffsetX =
-      element.x > x1
-        ? distance(element.x, x1) * window.devicePixelRatio * scale
+      layoutElement.x > x1
+        ? distance(layoutElement.x, x1) * window.devicePixelRatio * scale
         : 0;
 
     canvasOffsetY =
-      element.y > y1
-        ? distance(element.y, y1) * window.devicePixelRatio * scale
+      layoutElement.y > y1
+        ? distance(layoutElement.y, y1) * window.devicePixelRatio * scale
         : 0;
 
     context.translate(canvasOffsetX, canvasOffsetY);
@@ -407,6 +756,18 @@ const drawElementOnCanvas = (
       context.lineJoin = "round";
       context.lineCap = "round";
 
+      const primitiveRevealPreview = getPrimitiveRevealPreviewData(element);
+
+      if (primitiveRevealPreview) {
+        renderPrimitiveRevealPreview(
+          context,
+          element,
+          renderConfig,
+          primitiveRevealPreview,
+        );
+        break;
+      }
+
       ShapeCache.generateElementShape(element, renderConfig).forEach(
         (shape) => {
           rc.draw(shape);
@@ -545,6 +906,17 @@ const drawElementOnCanvas = (
     }
     default: {
       if (isTextElement(element)) {
+        if (
+          drawHandwrittenTextOutlineToCanvas({
+            context,
+            element,
+            requirePreviewMarker: !renderConfig.isExporting,
+            theme: renderConfig.theme,
+          })
+        ) {
+          break;
+        }
+
         const rtl = isRTL(element.text);
         const shouldTemporarilyAttach = rtl && !context.canvas.isConnected;
         if (shouldTemporarilyAttach) {
@@ -670,9 +1042,13 @@ const drawElementFromCanvas = (
   allElementsMap: NonDeletedSceneElementsMap,
 ) => {
   const element = elementWithCanvas.element;
-  const padding = getCanvasPadding(element);
+  const layoutElement = getPrimitiveRevealLayoutElement(element) || element;
+  const padding = getCanvasPadding(layoutElement);
   const zoom = elementWithCanvas.scale;
-  const [x1, y1, x2, y2] = getElementAbsoluteCoords(element, allElementsMap);
+  const [x1, y1, x2, y2] = getElementAbsoluteCoords(
+    layoutElement,
+    allElementsMap,
+  );
   const cx = ((x1 + x2) / 2 + appState.scrollX) * window.devicePixelRatio;
   const cy = ((y1 + y2) / 2 + appState.scrollY) * window.devicePixelRatio;
 

@@ -131,6 +131,54 @@ describe("exportToSvg", () => {
     });
   });
 
+  it("exports handwritten Excalifont text as outline paths", async () => {
+    const svgElement = await exportUtils.exportToSvg(
+      [
+        {
+          ...textFixture,
+          height: ELEMENT_HEIGHT,
+          width: ELEMENT_WIDTH,
+          text: "HELLO",
+          originalText: "HELLO",
+          index: "a4" as FractionalIndex,
+        } as ExcalidrawTextElement,
+      ],
+      DEFAULT_OPTIONS,
+      null,
+    );
+
+    expect(svgElement.querySelectorAll("path").length).toBeGreaterThan(0);
+    expect(
+      Array.from(svgElement.querySelectorAll("text")).some(
+        (textNode) => textNode.textContent === "HELLO",
+      ),
+    ).toBe(false);
+  });
+
+  it("falls back to text nodes for unsupported handwritten glyphs", async () => {
+    const svgElement = await exportUtils.exportToSvg(
+      [
+        {
+          ...textFixture,
+          height: ELEMENT_HEIGHT,
+          width: ELEMENT_WIDTH,
+          text: "HELLO🙂",
+          originalText: "HELLO🙂",
+          index: "a4" as FractionalIndex,
+        } as ExcalidrawTextElement,
+      ],
+      DEFAULT_OPTIONS,
+      null,
+    );
+
+    expect(svgElement.querySelectorAll("path").length).toBeGreaterThan(0);
+    expect(
+      Array.from(svgElement.querySelectorAll("text")).some(
+        (textNode) => textNode.textContent === "🙂",
+      ),
+    ).toBe(true);
+  });
+
   it("with exportPadding", async () => {
     const svgElement = await exportUtils.exportToSvg(
       ELEMENTS,

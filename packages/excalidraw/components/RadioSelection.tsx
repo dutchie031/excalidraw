@@ -7,6 +7,7 @@ import type { JSX } from "react";
 export const RadioSelection = <T extends Object>(
   props: {
     options: {
+      className?: string;
       value: T;
       text: string;
       icon: JSX.Element;
@@ -28,20 +29,23 @@ export const RadioSelection = <T extends Object>(
   ),
 ) => (
   <>
-    {props.options.map((option) =>
-      props.type === "button" ? (
+    {props.options.map((option) => {
+      const isActive = option.active ?? props.value === option.value;
+
+      return props.type === "button" ? (
         <ButtonIcon
           key={option.text}
           icon={option.icon}
           title={option.text}
+          className={option.className}
           testId={option.testId}
-          active={option.active ?? props.value === option.value}
+          active={isActive}
           onClick={(event) => props.onClick(option.value, event)}
         />
       ) : (
         <label
           key={option.text}
-          className={clsx({ active: props.value === option.value })}
+          className={clsx(option.className, { active: isActive })}
           title={option.text}
         >
           <input
@@ -49,11 +53,12 @@ export const RadioSelection = <T extends Object>(
             name={props.group}
             onChange={() => props.onChange(option.value)}
             checked={props.value === option.value}
+            aria-label={option.text}
             data-testid={option.testId}
           />
           {option.icon}
         </label>
-      ),
-    )}
+      );
+    })}
   </>
 );

@@ -92,6 +92,8 @@ const ExcalidrawBase = (props: ExcalidrawProps) => {
     onPointerUp,
     onScrollChange,
     onDuplicate,
+    onFrameDuplicate,
+    frameNavigatorModes,
     children,
     validateEmbeddable,
     renderEmbeddable,
@@ -203,6 +205,8 @@ const ExcalidrawBase = (props: ExcalidrawProps) => {
           onPointerUp={onPointerUp}
           onScrollChange={onScrollChange}
           onDuplicate={onDuplicate}
+          onFrameDuplicate={onFrameDuplicate}
+          frameNavigatorModes={frameNavigatorModes}
           validateEmbeddable={validateEmbeddable}
           renderEmbeddable={renderEmbeddable}
           aiEnabled={aiEnabled !== false}

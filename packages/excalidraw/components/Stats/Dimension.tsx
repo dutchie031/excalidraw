@@ -23,6 +23,10 @@ import type {
   DragInputCallbackType,
 } from "./DragInput";
 import type { AppState } from "../../types";
+import {
+  isMasterNormalFrameId,
+  syncNormalFramesToMasterSize,
+} from "../../frameNavigator";
 
 interface DimensionDragInputProps {
   property: "width" | "height";
@@ -32,6 +36,25 @@ interface DimensionDragInputProps {
 }
 
 const STEP_SIZE = 10;
+
+const syncMasterFrameResize = ({
+  elements,
+  masterFrameId,
+  originalMasterFrame,
+}: {
+  elements: readonly ExcalidrawElement[];
+  masterFrameId: ExcalidrawElement["id"];
+  originalMasterFrame: ExcalidrawElement;
+}) => {
+  return syncNormalFramesToMasterSize({
+    elements,
+    masterFrameId,
+    referenceElements: elements.map((element) => {
+      return element.id === originalMasterFrame.id ? originalMasterFrame : element;
+    }),
+  });
+};
+
 const _shouldKeepAspectRatio = (element: ExcalidrawElement) => {
   return element.type === "image";
 };
@@ -209,7 +232,16 @@ const handleDimensionChange: DragInputCallbackType<
           app,
         );
 
-        scene.replaceAllElements(updatedElements);
+        scene.replaceAllElements(
+          latestElement.type === "frame" &&
+            isMasterNormalFrameId(updatedElements, latestElement.id)
+            ? syncMasterFrameResize({
+                elements: updatedElements,
+                masterFrameId: latestElement.id,
+                originalMasterFrame: origElement,
+              })
+            : updatedElements,
+        );
       }
 
       return;
@@ -305,7 +337,16 @@ const handleDragFinished: DragFinishedCallbackType = ({
       app,
     );
 
-    app.scene.replaceAllElements(updatedElements);
+    app.scene.replaceAllElements(
+      latestElement.type === "frame" &&
+        isMasterNormalFrameId(updatedElements, latestElement.id)
+        ? syncMasterFrameResize({
+            elements: updatedElements,
+            masterFrameId: latestElement.id,
+            originalMasterFrame: origElement,
+          })
+        : updatedElements,
+    );
 
     setAppState({
       elementsToHighlight: null,
@@ -345,7 +386,11 @@ const DimensionDragInput = ({
       elements={[element]}
       dragInputCallback={handleDimensionChange}
       value={value}
-      editable={isPropertyEditable(element, property)}
+      editable={
+        isPropertyEditable(element, property) &&
+        (element.type !== "frame" ||
+          isMasterNormalFrameId(scene.getElementsIncludingDeleted(), element.id))
+      }
       scene={scene}
       appState={appState}
       property={property}

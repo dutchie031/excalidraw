@@ -1,6 +1,7 @@
 import { pointFrom } from "@excalidraw/math";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { JSX } from "react";
 
 import {
   DEFAULT_ELEMENT_BACKGROUND_COLOR_PALETTE,
@@ -121,10 +122,18 @@ import {
   ArrowheadCircleOutlineIcon,
   ArrowheadDiamondIcon,
   ArrowheadDiamondOutlineIcon,
+  FontFamilyCodeIcon,
+  FreedrawIcon,
   fontSizeIcon,
+  MagicIcon,
+  PenModeIcon,
   sharpArrowIcon,
   roundArrowIcon,
   elbowArrowIcon,
+  slashIcon,
+  ArrowheadCrowfootIcon,
+  ArrowheadCrowfootOneIcon,
+  ArrowheadCrowfootOneOrManyIcon,
   ArrowheadCardinalityExactlyOneIcon,
   ArrowheadCardinalityManyIcon,
   ArrowheadCardinalityOneIcon,
@@ -150,8 +159,23 @@ import {
 import { getShortcutKey } from "../shortcut";
 
 import { register } from "./register";
+import {
+  buildElementDrawingAnimation,
+  DEFAULT_ELEMENT_DRAWING_ANIMATION_DURATION_MS,
+  DEFAULT_TEXT_REVEAL_SPEED,
+  getElementDrawingAnimationChoice,
+  getElementDrawingAnimationDuration,
+  getElementTextRevealSpeed,
+  normalizeDrawingAnimationChoiceForElement,
+  setElementDrawingAnimation,
+  supportsElementDrawingAnimation,
+} from "../elementAnimation";
 
 import type { AppClassProperties, AppState, Primitive } from "../types";
+import type {
+  ElementDrawingAnimationChoice,
+  TextRevealSpeed,
+} from "../elementAnimation";
 
 const FONT_SIZE_RELATIVE_INCREASE_STEP = 0.1;
 
@@ -162,6 +186,177 @@ const getStylesPanelInfo = (app: AppClassProperties) => {
     isCompact: stylesPanelMode !== "full",
     isMobile: stylesPanelMode === "mobile",
   } as const;
+};
+
+type DrawingAnimationAppState = Pick<
+  AppState,
+  | "currentItemDrawingAnimationStyle"
+  | "currentItemDrawingAnimationDuration"
+  | "currentItemDrawingAnimationSpeed"
+>;
+
+type DrawingAnimationOption<T> = {
+  className?: string;
+  icon: JSX.Element;
+  text: string;
+  value: T;
+  testId: string;
+};
+
+type DrawingAnimationStyleOption =
+  DrawingAnimationOption<ElementDrawingAnimationChoice>;
+
+type DrawingAnimationSpeedOption = DrawingAnimationOption<TextRevealSpeed>;
+
+const DrawingAnimationOptionIcon = ({
+  glyph,
+}: {
+  glyph: JSX.Element;
+}) => (
+  <span className="drawing-animation-option" aria-hidden="true">
+    <span className="drawing-animation-option__glyph">{glyph}</span>
+  </span>
+);
+
+const createDrawingAnimationStyleOption = (
+  value: ElementDrawingAnimationChoice,
+  text: string,
+  testId: string,
+  glyph: JSX.Element,
+): DrawingAnimationStyleOption => ({
+  className: "drawing-animation-option-control",
+  value,
+  text,
+  testId,
+  icon: <DrawingAnimationOptionIcon glyph={glyph} />,
+});
+
+const createDrawingAnimationSpeedOption = (
+  value: TextRevealSpeed,
+  text: string,
+  testId: string,
+): DrawingAnimationSpeedOption => ({
+  className: "drawing-animation-option-control",
+  value,
+  text,
+  testId,
+  icon: <DrawingAnimationOptionIcon glyph={<span>{text}</span>} />,
+});
+
+const DRAWING_ANIMATION_BASE_OPTIONS: DrawingAnimationStyleOption[] = [
+  createDrawingAnimationStyleOption(
+    "automatic",
+    "Automatic",
+    "drawing-animation-style-automatic",
+    MagicIcon,
+  ),
+  createDrawingAnimationStyleOption(
+    "none",
+    "Off",
+    "drawing-animation-style-none",
+    slashIcon,
+  ),
+  createDrawingAnimationStyleOption(
+    "draw",
+    "Draw",
+    "drawing-animation-style-draw",
+    FreedrawIcon,
+  ),
+];
+
+const DRAWING_ANIMATION_TEXT_OPTIONS: DrawingAnimationStyleOption[] = [
+  createDrawingAnimationStyleOption(
+    "typewriter",
+    "Typewriter",
+    "drawing-animation-style-typewriter",
+    FontFamilyCodeIcon,
+  ),
+  createDrawingAnimationStyleOption(
+    "handwritten",
+    "Handwritten",
+    "drawing-animation-style-handwritten",
+    PenModeIcon,
+  ),
+];
+
+const DRAWING_ANIMATION_SPEED_OPTIONS: DrawingAnimationSpeedOption[] = [
+  createDrawingAnimationSpeedOption("fast", "Fast", "drawing-animation-speed-fast"),
+  createDrawingAnimationSpeedOption(
+    "normal",
+    "Normal",
+    "drawing-animation-speed-normal",
+  ),
+  createDrawingAnimationSpeedOption("slow", "Slow", "drawing-animation-speed-slow"),
+];
+
+const DrawingAnimationRangeControl = ({
+  label,
+  max,
+  min,
+  onChange,
+  step,
+  testId,
+  value,
+}: {
+  label: string;
+  max: number;
+  min: number;
+  onChange: (value: number) => void;
+  step: number;
+  testId: string;
+  value: number;
+}) => {
+  return (
+    <label className="control-label">
+      {label}
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        data-testid={testId}
+        onChange={(event) => onChange(Number(event.target.value))}
+      />
+      <span>{value}ms</span>
+    </label>
+  );
+};
+
+const isTextOnlyDrawingAnimationTarget = ({
+  app,
+  appState,
+}: {
+  app: AppClassProperties;
+  appState: AppState;
+}) => {
+  const selectedElements = app.scene.getSelectedElements(appState).filter((el) =>
+    supportsElementDrawingAnimation(el),
+  );
+
+  return (
+    (appState.activeTool.type === "text" && selectedElements.length === 0) ||
+    (selectedElements.length > 0 && selectedElements.every(isTextElement))
+  );
+};
+
+const getDrawingAnimationStyleOptions = ({
+  app,
+  appState,
+}: {
+  app: AppClassProperties;
+  appState: AppState;
+}) => {
+  const shouldShowTextOptions = isTextOnlyDrawingAnimationTarget({
+    app,
+    appState,
+  });
+
+  return shouldShowTextOptions
+    ? DRAWING_ANIMATION_BASE_OPTIONS.filter(
+        (option) => option.value !== "draw",
+      ).concat(DRAWING_ANIMATION_TEXT_OPTIONS)
+    : DRAWING_ANIMATION_BASE_OPTIONS;
 };
 
 export const changeProperty = (
@@ -750,6 +945,133 @@ export const actionChangeOpacity = register<ExcalidrawElement["opacity"]>({
         step={10}
         testId="opacity"
       />
+    );
+  },
+});
+
+export const actionChangeDrawingAnimation = register<
+  Partial<DrawingAnimationAppState>
+>({
+  name: "changeDrawingAnimation",
+  label: "Drawing animation",
+  trackEvent: false,
+  perform: (elements, appState, value) => {
+    const nextAppState = {
+      ...appState,
+      ...value,
+    };
+    const shouldMutateElements =
+      !!value &&
+      (Object.keys(value).length > 0 || !!appState.editingTextElement);
+
+    return {
+      elements: shouldMutateElements
+        ? changeProperty(elements, appState, (element) => {
+            if (!supportsElementDrawingAnimation(element)) {
+              return element;
+            }
+
+            return setElementDrawingAnimation(
+              element,
+              buildElementDrawingAnimation({
+                choice:
+                  value?.currentItemDrawingAnimationStyle ??
+                  getElementDrawingAnimationChoice(element),
+                durationMs:
+                  value?.currentItemDrawingAnimationDuration ??
+                  getElementDrawingAnimationDuration(element),
+                elementType: element.type,
+                fontFamily: isTextElement(element)
+                  ? element.fontFamily
+                  : undefined,
+                speed:
+                  value?.currentItemDrawingAnimationSpeed ??
+                  getElementTextRevealSpeed(element),
+              }),
+            );
+          })
+        : undefined,
+      appState: nextAppState,
+      captureUpdate: shouldMutateElements
+        ? CaptureUpdateAction.IMMEDIATELY
+        : CaptureUpdateAction.EVENTUALLY,
+    };
+  },
+  PanelComponent: ({ elements, appState, updateData, app }) => {
+    const styleOptions = getDrawingAnimationStyleOptions({ app, appState });
+    const isTextOnlyTarget = isTextOnlyDrawingAnimationTarget({ app, appState });
+
+    return (
+      <fieldset>
+        <legend>Drawing animation</legend>
+        <div className="buttonList">
+          <RadioSelection
+            group="drawing-animation-style"
+            options={styleOptions}
+            value={getFormValue(
+              elements,
+              app,
+              (element) => getElementDrawingAnimationChoice(element),
+              (element) => supportsElementDrawingAnimation(element),
+              (hasSelection) =>
+                hasSelection
+                  ? "automatic"
+                  : normalizeDrawingAnimationChoiceForElement({
+                      choice: appState.currentItemDrawingAnimationStyle,
+                      elementType: appState.activeTool.type,
+                    }),
+            )}
+            onChange={(nextStyle) =>
+              updateData({ currentItemDrawingAnimationStyle: nextStyle })
+            }
+          />
+        </div>
+        {isTextOnlyTarget ? (
+          <>
+            <div className="control-label">Speed</div>
+            <div className="buttonList">
+              <RadioSelection
+                group="drawing-animation-speed"
+                options={DRAWING_ANIMATION_SPEED_OPTIONS}
+                value={getFormValue(
+                  elements,
+                  app,
+                  (element) => getElementTextRevealSpeed(element),
+                  isTextElement,
+                  (hasSelection) =>
+                    hasSelection
+                      ? DEFAULT_TEXT_REVEAL_SPEED
+                      : appState.currentItemDrawingAnimationSpeed,
+                )}
+                onChange={(nextSpeed) =>
+                  updateData({ currentItemDrawingAnimationSpeed: nextSpeed })
+                }
+              />
+            </div>
+          </>
+        ) : (
+          <DrawingAnimationRangeControl
+            label="Duration"
+            min={0}
+            max={3000}
+            step={50}
+            testId="drawing-animation-duration"
+            value={getFormValue(
+              elements,
+              app,
+              (element) => getElementDrawingAnimationDuration(element),
+              (element) => supportsElementDrawingAnimation(element),
+              (hasSelection) =>
+                hasSelection
+                  ? DEFAULT_ELEMENT_DRAWING_ANIMATION_DURATION_MS
+                  : appState.currentItemDrawingAnimationDuration,
+            )}
+            onChange={(nextDuration) =>
+              updateData({ currentItemDrawingAnimationDuration: nextDuration })
+            }
+          />
+        )}
+      </fieldset>
     );
   },
 });

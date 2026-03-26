@@ -47,6 +47,11 @@ import type { Mutable } from "@excalidraw/common/utility-types";
 
 import type { Radians } from "@excalidraw/math";
 
+import {
+  buildAnimationCustomData,
+  buildElementDrawingAnimation,
+} from "../elementAnimation";
+
 import { register } from "./register";
 
 import type { AppState } from "../types";
@@ -273,6 +278,14 @@ export const actionWrapTextInContainer = register({
           ),
           groupIds: textElement.groupIds,
           frameId: textElement.frameId,
+          customData: buildAnimationCustomData({
+            appearance:
+              buildElementDrawingAnimation({
+                choice: appState.currentItemDrawingAnimationStyle,
+                durationMs: appState.currentItemDrawingAnimationDuration,
+                elementType: "rectangle",
+              }) || undefined,
+          }),
         });
 
         // update bindings
