@@ -101,3 +101,4 @@ export * from "./typeChecks";
 export * from "./utils";
 export * from "./zindex";
 export * from "./arrows/helpers";
+export * from "./arrowheads";

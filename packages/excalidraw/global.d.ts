@@ -63,7 +63,7 @@ declare module "png-chunks-extract" {
 // -----------------------------------------------------------------------------
 
 interface Blob {
-  handle?: import("browser-fs-acces").FileSystemHandle;
+  handle?: FileSystemFileHandle;
   name?: string;
 }
 
